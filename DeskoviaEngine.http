@@ -1,6 +1,0 @@
-@DeskoviaEngine_HostAddress = http://localhost:5144
-
-GET {{DeskoviaEngine_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

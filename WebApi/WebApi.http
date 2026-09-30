@@ -1,0 +1,6 @@
+﻿@DeskoviaEngine_HostAddress = https://localhost:7095
+
+GET {{DeskoviaEngine_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###
