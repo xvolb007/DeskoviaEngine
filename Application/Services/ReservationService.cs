@@ -5,7 +5,7 @@ using Deskovia.Shared.Contracts;
 
 namespace Deskovia.Application.Services;
 
-public sealed class ReservationService(WorkspaceContext context, BillingOptions billing, PrototypeOptions options)
+public sealed class ReservationService(WorkspaceContext context, PrototypeOptions options)
 {
     private IWorkspaceStore Store => context.Store;
     private IQueryable<Reservation> Reservations => Store.Query<Reservation>().Where(x => x.OrganizationId == context.OrganizationId);
@@ -52,7 +52,6 @@ public sealed class ReservationService(WorkspaceContext context, BillingOptions 
         var office = room == null ? null : Store.Query<Office>().SingleOrDefault(x => x.Id == room.OfficeId && x.OrganizationId == context.OrganizationId);
         if (desk == null || room == null || office == null) throw new BusinessException(404, "desk_not_found", "Desk not found.");
         var hours = Store.Query<OfficeWorkingHours>().Where(x => x.OfficeId == office.Id).ToList();
-        var subscription = Store.Query<OrganizationSubscription>().SingleOrDefault(x => x.OrganizationId == context.OrganizationId);
         var output = new List<DateAvailability>();
         foreach (var day in input.Dates!.Order())
         {
@@ -61,9 +60,6 @@ public sealed class ReservationService(WorkspaceContext context, BillingOptions 
                 WorkspaceContext.Check(!desk.IsArchived && !room.IsArchived && !office.IsArchived, "archived", "This workspace is archived.");
                 var interval = BookingRules.Interval(office, hours.SingleOrDefault(x => x.DayOfWeek == day.DayOfWeek), day, input.IsFullDay, input.LocalStart, input.LocalEnd, context.Now);
                 var start = interval.Start; var end = interval.End;
-                WorkspaceContext.Check(!billing.Enabled || subscription != null && subscription.Status == SubscriptionStatus.Active &&
-                    subscription.CurrentPeriodStartsAtUtc <= context.Now && subscription.CurrentPeriodEndsAtUtc > context.Now &&
-                    subscription.CurrentPeriodStartsAtUtc <= start && subscription.CurrentPeriodEndsAtUtc >= end, "subscription_required", "The interval must fall within an active paid period.");
                 WorkspaceContext.Check(!Store.Query<OfficeClosure>().Any(x => x.OrganizationId == context.OrganizationId && x.OfficeId == office.Id &&
                     (x.RoomId == null || x.RoomId == room.Id) && x.CancelledAtUtc == null && x.StartsAtUtc < end && start < x.EndsAtUtc), "closed", "The office or room is closed.");
                 // Exclude tracked lifecycle changes awaiting SaveChanges.

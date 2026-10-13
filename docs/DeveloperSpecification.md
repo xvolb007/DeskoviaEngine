@@ -96,7 +96,6 @@ On disabling: deactivate the user/membership, revoke sessions, cancel future res
 | Cancel another member's reservation with a reason | No | Yes | Yes |
 | Disable an ordinary Employee | No | Yes | Yes |
 | Assign/remove Administrator and manage administrators | No | No | Yes |
-| Test payments | No | No | Yes |
 
 Administrators cannot promote themselves or disable Owner or another administrator. The single active Owner cannot be disabled. If ownership transfer is implemented, it must be a separate atomic operation that never leaves the organisation without an owner.
 
@@ -235,17 +234,11 @@ Take organisation and user identity from the server session. Derive reservation 
 
 Every operation has loading/error/empty states, duplicate-click protection and refreshed data after conflicts. The map must not be the only way to select a desk: provide a workspace list. Render other members' names as text rather than HTML. Never show success before a successful API response.
 
-## 10. Test payments — separate final stage
+## 10. Application access without payments
 
-Test payments without real charges or a trial period were agreed earlier. Subscription, Payment and PaymentWebhookEvent tables already exist. Preserve them; their presence does not mean payment workflows are implemented.
+The software is delivered for a one-time project price of CZK 90,000. This is an external project agreement, not an application transaction. Authenticated active ABC members can use the application without a subscription, paid period, trial or payment workflow. Existing role and reservation rules continue to apply.
 
-Proposed sequence: the initial prototype stages do not depend on an external payment provider. Billing.Enabled=false explicitly disables subscription enforcement during development; this is a technical switch rather than a free trial. Agree the provider, price and currency before enabling this stage.
-
-With Billing.Enabled=true, new reservations are allowed only within an active paid period. Existing reservations remain manageable after subscription expiry. Subscriptions start PendingPayment; member registration creates no subscription or payment access. Owner pays for ABC.
-
-Use only the provider sandbox, verify webhook signatures and enforce provider-event uniqueness. Browser redirects do not confirm payment. Duplicate webhooks do not extend subscriptions again. Exact endpoints and forms depend on the chosen provider. Real charges and storing card data are outside scope.
-
-Confirmed implementation fallback: if no provider or sandbox keys are available, implement a clearly labelled local simulator of successful/failed payments through a replaceable adapter. It must support checking subscription and booking restrictions without claiming to be a real integration. Keep price and currency configurable and label demonstration values. A real sandbox adapter and webhook signature verification remain external integrations.
+Remove payment UI, API, adapters, DTOs, configuration and booking restrictions. Retain legacy payment/subscription entities and mappings for compatibility with the user's applied database; do not modify migrations or delete stored records. Background jobs must not process these legacy records. No new migration is needed for this functional removal.
 
 ## 11. Implementation sequence and acceptance criteria
 
@@ -271,9 +264,9 @@ Acceptance with controlled server time (for example, TimeProvider): for a 07:00 
 
 Acceptance: closing a room cancels only affected reservations with reasons; repeated processing is safe; Employee cannot access other members' history. Disabled in the fake directory revokes sessions and resolves reservations; Unavailable disables nobody; reactivation does not restore cancellations. Daily processing never disables ordinary Local users without a simulated directory record.
 
-### Stage F — test payments and handover
+### Stage F — verification and handover
 
-After provider agreement: successful sandbox payment activates a period, failure does not, and duplicate webhooks have no repeated effect. Without a provider, verify the explicitly labelled local simulator instead. Run the acceptance suite and update OpenAPI and setup documentation: user-applied migration, automatic ABC/first-Owner setup, both applications, test mailbox and directory simulation. Deliver source and known limitations.
+Verify that booking works without subscriptions or payment and that legacy paid periods cannot restrict access. Run the acceptance suite and update OpenAPI and setup documentation for the user-applied database, automatic ABC/first-Owner setup, both applications, test mailbox and directory simulation.
 
 ## 12. Actions that must not be performed automatically
 

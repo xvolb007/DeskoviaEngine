@@ -21,8 +21,3 @@ public interface IEmailSink
 {
     Task DeliverAsync(Guid id, string recipient, string subject, string body, CancellationToken ct);
 }
-public interface IPaymentAdapter
-{
-    string Name { get; }
-    bool Simulate(bool succeed);
-}

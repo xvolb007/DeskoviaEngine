@@ -139,3 +139,7 @@ Exact connection instructions and acceptance: [PrototypeRunbook.md](PrototypeRun
 ## Real Entra sign-in
 
 AppUser.MicrosoftTenantId and MicrosoftObjectId now hold verified Entra claims after server-side OpenID Connect authentication. Their existing pair constraint and filtered unique index remain unchanged; no extra migration is required. New Entra users have no LocalCredential. Account linking is removed. Existing Microsoft identities continue to work, with no email-only matching or Microsoft-derived Deskovia roles. See EntraLogin.md for configuration and recovery boundaries.
+
+## Legacy payment storage
+
+OrganizationSubscription, Payment and PaymentWebhookEvent mappings are retained only for compatibility with existing applied migrations. The application no longer reads or changes these records for billing and exposes no payment workflow. Their presence does not restrict booking. No schema change or data deletion accompanies payment removal.

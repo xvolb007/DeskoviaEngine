@@ -4,11 +4,11 @@
 
 One ABC organisation, local registration without email verification, first-account Owner and subsequent Employee roles, Cookie Authentication, revocable eight-hour sessions, current roles/activity checks, antiforgery and registration/sign-in rate limits. Normal backend startup automatically prepares active ABC after migrations, without a setup command or payment. The first successfully registered account becomes Owner automatically; later registrations create Employee. No Owner setup command is required.
 
-Workflow: offices → rooms → layouts and desks → availability for individual dates → atomic batch → confirmation/cancellation/completion → personal and administrator history. Administrators manage schedules, closures with confirmed previews, archiving and member disabling. Owner manages administrators, the demo directory, test mailbox and payment simulation.
+Workflow: offices → rooms → layouts and desks → availability for individual dates → atomic batch → confirmation/cancellation/completion → personal and administrator history. Administrators manage schedules, closures with confirmed previews, archiving and member disabling. Owner manages administrators, the demo directory, test mailbox.
 
 Entity and mapping changes are prepared. The developer did not create a database, generate/apply migrations or edit existing migrations/snapshots. No Tests project was added. UI, API messages, notifications and documentation use English. Application culture is en-GB; office time zones continue to define booking dates and times.
 
-## Configuration and user-applied migration
+## Configuration and automatic startup migrations
 
 Requirements: .NET SDK 10, a running SQL Server instance (SSMS manages that instance) and a trusted local HTTPS certificate. Use a new SQL Server database. The user removed the previous database and migrations; no data transfer is required. Run from DeskoviaEngine in Windows PowerShell:
 
@@ -21,7 +21,7 @@ dotnet ef migrations add SqlServerInitial --project Infrastructure --startup-pro
 
 The configuration script uses Windows Authentication by default and stores ConnectionStrings:DeskoviaSqlServer in WebApi User Secrets. Pass -Username for SQL Server Authentication; the password is prompted securely. The default database name is Deskovia; override with -Database. For a local development server with a self-signed certificate, explicitly pass -TrustServerCertificate if needed. Production must validate the server certificate. No password belongs in appsettings.json or Git.
 
-Review the newly generated SQL Server migration, then run:
+Review any newly generated SQL Server migration. Normal API startup applies existing pending migrations automatically before initialising ABC. Manual application is optional:
 
 ~~~powershell
 dotnet ef database update --project Infrastructure --startup-project WebApi -- --environment Development
@@ -51,7 +51,7 @@ Replace the server name with the value from SSMS. JSON needs a doubled backslash
 
 No database or migration was created/applied by the developer. SSMS manages a running SQL Server instance; the configured login needs access and sufficient migration permissions. Recreating a missing database also needs server permission. Once an initial migration exists, a deliberate database reset requires only Update-Database; do not generate Init again for every reset.
 
-Once migrations are applied, simply start both applications normally. Backend startup creates ABC before starting background jobs or accepting HTTP requests. Repeated starts do not duplicate ABC or change existing organisation data. The default Billing.Enabled=false requires no payment or subscription activation; no trial subscription is created. If the existing organisation was deliberately archived, startup preserves that status.
+Start both applications normally. Backend startup first applies existing pending migrations, then initialises ABC. Backend startup applies migrations and creates ABC before starting background jobs or accepting HTTP requests. Repeated starts do not duplicate ABC or change existing organisation data. Application access requires no payment or subscription activation. If the existing organisation was deliberately archived, startup preserves that status.
 
 ### Automatic Owner account
 
@@ -102,11 +102,8 @@ Configuration:
 | Prototype:FrontendOrigin | Exact HTTPS origin; default https://localhost:7178 |
 | Prototype:DemoDirectoryEnabled | Enables the fake directory; default true |
 | ApiBaseUrl (Client/wwwroot/appsettings.json) | HTTPS API URL; default https://localhost:7095/ |
-| Billing:Enabled | false technically disables subscription enforcement; this is not a trial |
-| Billing:DemoMonthlyPrice | Demonstration value 499 |
-| Billing:Currency | Demonstration value CZK |
 
-With Billing.Enabled=true, new intervals must fit entirely inside an active paid period, which must also be active now. Existing reservations remain manageable without a subscription. Owner pays for ABC through a clearly labelled local success/failure simulator. An operation key returns the same payment even if retried with a different requested outcome. Success extends the period once; failure does not activate a subscription. No card data or real charges are involved.
+All active authorised members can book without payment. Existing subscription records are ignored, and no billing configuration is required.
 
 For deployment, use one origin/reverse proxy or compatible HTTPS subdomains; CORS has no wildcard. Multiple API instances require a shared ASP.NET Data Protection key ring and identical application name configured by hosting. SQL Server application locking is already shared between instances, but cookie keys must be shared separately. The `--verify-host` switch disables both automatic ABC initialisation and the worker solely for HTTP host verification without a database; normal startup does not use it.
 
@@ -117,7 +114,7 @@ dotnet run --file scripts/Verify-Prototype.cs
 .\scripts\Check-TextFormat.ps1
 ~~~
 
-This is an SDK 10 C# file referencing Infrastructure, **not a separate Tests project**. PublishAot=false avoids unnecessary NativeAOT downloads. It checks the EF model without connections or executing DDL and Application workflows using a transactional in-memory store and controlled TimeProvider. Checks cover automatic ABC initialisation, first-account Owner assignment, concurrent registration under an in-memory transaction lock, automatic upgrade of existing accounts without Owner, preservation of existing organisation state, registration, roles, bootstrap, session revocation, individual dates/BatchId, atomic batches, adjacent intervals, horizon, exact time boundaries, early release, closures, directory checks, outbox and idempotent payments. It also checks real Microsoft identity creation, email collision handling, stable identity despite email changes, disabled accounts, session expiry/revocation and concurrent duplicate sign-ins. It does not prove SQL concurrency or browser cookie behaviour.
+This is an SDK 10 C# file referencing Infrastructure, **not a separate Tests project**. PublishAot=false avoids unnecessary NativeAOT downloads. It checks the EF model without connections or executing DDL and Application workflows using a transactional in-memory store and controlled TimeProvider. Checks cover automatic ABC initialisation, first-account Owner assignment, concurrent registration under an in-memory transaction lock, automatic upgrade of existing accounts without Owner, preservation of existing organisation state, registration, roles, bootstrap, session revocation, individual dates/BatchId, atomic batches, adjacent intervals, horizon, exact time boundaries, early release, closures, directory checks, outbox and booking without payment. It also checks real Microsoft identity creation, email collision handling, stable identity despite email changes, disabled accounts, session expiry/revocation and concurrent duplicate sign-ins. It does not prove SQL concurrency or browser cookie behaviour.
 
 For HTTP verification without a database, start the API with an intentionally unavailable connection and worker disabled:
 
@@ -141,13 +138,13 @@ Also run from the frontend repository:
 
 ## HTTP acceptance after your migration
 
-Use a separate demonstration database. The following script creates timestamp-labelled accounts/offices/reservations, changes roles, runs demo sync and simulates payments. Data and history are retained; other data is not deleted. It uses current ABC demo records, so Disabled/Deleted records may be disabled during the manual check.
+Use a separate demonstration database. The following script creates timestamp-labelled accounts/offices/reservations, changes roles, runs demo sync. Data and history are retained; other data is not deleted. It uses current ABC demo records, so Disabled/Deleted records may be disabled during the manual check.
 
 ~~~powershell
 pwsh -NoProfile -Command '& ./scripts/Accept-Prototype.ps1 -OwnerCredential (Get-Credential -Message "Existing ABC Owner")'
 ~~~
 
-The scenario checks A–F through the API, including a real race between two HTTP requests: exactly 200 + 409 is expected. It also checks SQL Server batch atomicity, adjacent intervals, 403/404, database-backed roles, closures with refreshed previews, directory processing, payment idempotency and logout. The developer does not run it before your migration. Use the additional scenarios below for real SQL Server confirm/NoShow races and lease/restart checks.
+The scenario checks A–F through the API, including a real race between two HTTP requests: exactly 200 + 409 is expected. It also checks SQL Server batch atomicity, adjacent intervals, 403/404, database-backed roles, closures with refreshed previews, directory processing and logout. The developer does not run it before your migration. Use the additional scenarios below for real SQL Server confirm/NoShow races and lease/restart checks.
 
 ## Manual UI and background-job checklist
 
@@ -160,7 +157,7 @@ The scenario checks A–F through the API, including a real race between two HTT
 7. Stop and restart the normal API: ReservationEvent records are not duplicated and pending outbox processing resumes. For lease recovery in a test database, stop after claim; Processing records with expired LockedUntil are reclaimed. The local sink sends nothing externally; a real provider may deliver twice if a failure occurs between sending and recording Sent (at-least-once).
 8. Closures show a preview. A new overlapping reservation between preview/save produces 409 and a refreshed list. Immediate closures complete current Confirmed occupancy; future closures cancel entire overlapping intervals. Removing a closure restores no reservations. Archiving preserves history and resolves active reservations.
 9. Administrator manages Employee but cannot manage Owner/Administrator. Owner assigns/removes Administrator. Disabling revokes sessions, cancels future reservations and completes current confirmed occupancy. Demo Unavailable/incomplete responses do not disable anyone; ordinary local accounts are not included in the directory. Manual reactivation restores no reservations.
-10. Enable Billing.Enabled on the backend and restart. New reservations are unavailable without payment. Failure activates no period; success activates one; repeating a key does not extend it twice. Existing reservations remain manageable after expiry. The UI explicitly labels the simulator.
+10. Book without a subscription or payment. Existing expired subscription records must not restrict availability or booking; the removed billing endpoints return 404.
 11. Stop the API: forms show network errors; empty offices/reservations/notifications show empty states; loading prevents double submissions. A 401 navigates to sign-in with a safe local return URL. Check browser registration/sign-in/logout, cookies and absence of passwords/tokens in localStorage/sessionStorage.
 
 ## Accepted architecture decisions
@@ -170,14 +167,14 @@ The scenario checks A–F through the API, including a real race between two HTT
 - Intervals use [start,end), 15-minute increments, a 30-minute minimum and at most 31 selected dates. The calendar uses office.Today rather than the browser's date.
 - Desks are visually 12-unit squares rotated around their centres. The backend checks rotated boundaries too. Existing composite alternate keys for Office/Room/Desk prevent moving existing desks between rooms; archive and create a new desk instead. This preserves the full history chain. CAD/drag-and-drop is unnecessary; the editor has coordinates, dimensions, rotation, sliders and a live preview.
 - Schedule/time zone changes never recalculate old intervals; conflicting changes return affected reservations. Room shrinking cannot leave active desks outside boundaries. Outbox deduplication uses reservation/kind; durable events and audit are saved with business changes.
-- LocalSimulator is an explicitly local IPaymentAdapter. Simulated events are stored in PaymentWebhookEvents under a separate provider. Redirects do not confirm payment; no public endpoint impersonates an external provider webhook.
+- Payment functionality has been removed. The project delivery price is external to the application; legacy payment tables are retained without runtime processing.
 - Real Entra sign-in is implemented; account linking is removed; Graph, automatic email linking, password reset and ownership transfer are not implemented. The single Owner is protected from disabling and demotion.
 - Product language is English. Application culture is explicitly en-GB for consistent framework messages and display; office time-zone calculations remain independent of browser culture. Unicode names and passwords remain supported.
 
 ## External integrations and unverified conditions
 
-Apply your migration and start the applications normally; ABC initialisation needs no separate command. The first registered account becomes Owner; no separate administrative setup command is required. Real SQL Server concurrency/persistence, EF SaveChanges against the new schema, end-to-end cookie sessions and the full authenticated UI are not claimed verified until then.
+Start the applications normally; existing pending migrations are applied automatically. ABC initialisation needs no separate command. The first registered account becomes Owner; no separate administrative setup command is required. Real SQL Server concurrency/persistence, EF SaveChanges against the new schema, end-to-end cookie sessions and the full authenticated UI are not claimed verified until then.
 
-A real payment sandbox remains an external integration: select a provider, obtain keys, implement the replaceable adapter and server-side webhook signature/provider-event verification. Real Entra sign-in is configured as described in EntraLogin.md. Microsoft Graph and SMTP remain disconnected; email-only account linking is deliberately unavailable.
+Real Entra sign-in is configured as described in EntraLogin.md. Microsoft Graph and SMTP remain disconnected; email-only account linking is deliberately unavailable.
 
 See Verification.md for completed developer checks.

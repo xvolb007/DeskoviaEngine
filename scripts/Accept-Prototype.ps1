@@ -46,7 +46,7 @@ $cookie = $alice.Cookies.GetCookies([uri]$ApiUrl) | Where-Object Name -eq '__Hos
 Assert ($cookie.HttpOnly -and $cookie.Secure) 'session cookie flags'
 $null = Request $alice POST 'api/auth/register' @{name='Duplicate';email="ALICE-$stamp@example.test";password=$demoPassword} 409
 $null = Request $alice GET 'api/admin/members' $null 403
-$null = Request $alice GET 'api/owner/billing' $null 403
+$null = Request $alice GET 'api/owner/notifications' $null 403
 $hours = 0..6 | ForEach-Object { @{day=$_;opensAt='07:00:00';closesAt='18:00:00'} }
 $office = Request $owner POST 'api/admin/offices' @{name="Acceptance Prague $stamp";timeZoneId='Europe/Prague';bookingHorizonDays=30;hours=@($hours)}
 $office2 = Request $owner POST 'api/admin/offices' @{name="Acceptance Second $stamp";timeZoneId='Europe/Prague';bookingHorizonDays=30;hours=@(@{day=1;opensAt='09:00:00';closesAt='16:00:00'})}
@@ -60,13 +60,6 @@ Assert (($map.desks | Where-Object id -eq $desk).x -eq 15) 'coordinates persist 
 $offices = Request $alice GET 'api/offices'
 Assert (@($offices | Where-Object { $_.id -in @($office,$office2) }).Count -eq 2) 'both offices accessible'
 $today = [DateOnly]::Parse(($offices | Where-Object id -eq $office).today)
-# Local simulated billing must be paid if Billing.Enabled=true.
-$paymentKey = "acceptance-$stamp"
-$failed = Request $owner POST 'api/owner/billing/simulate' @{idempotencyKey="$paymentKey-failure";succeed=$false}
-Assert ($failed.status -eq 'Failed') 'simulated failure recorded'
-$paid = Request $owner POST 'api/owner/billing/simulate' @{idempotencyKey=$paymentKey;succeed=$true}
-$paidAgain = Request $owner POST 'api/owner/billing/simulate' @{idempotencyKey=$paymentKey;succeed=$true}
-Assert ($paid.id -eq $paidAgain.id) 'simulated payment replay returns same payment'
 $dates = @(1,2,3 | ForEach-Object { $today.AddDays($_).ToString('yyyy-MM-dd') })
 $batch = Request $alice POST 'api/reservations/batch' @{deskId=$desk;dates=$dates;isFullDay=$true}
 Assert ($batch.reservations.Count -eq 3 -and @($batch.reservations | Where-Object batchId -ne $batch.batchId).Count -eq 0) 'atomic batch with three dates'

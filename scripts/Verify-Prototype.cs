@@ -8,7 +8,6 @@ using Deskovia.Domain.Entities;
 using Deskovia.Domain.Enums;
 using Deskovia.Infrastructure.Identity;
 using Deskovia.Infrastructure.Notifications;
-using Deskovia.Infrastructure.Payments;
 using Deskovia.Infrastructure.Persistence;
 using Deskovia.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
@@ -111,12 +110,11 @@ await Reject(() => startupAuth.RegisterAsync(new("Archived", "archived@example.t
 var clock = new ManualClock(new DateTimeOffset(2026, 10, 6, 2, 0, 0, TimeSpan.Zero));
 var store = new MemoryStore();
 var options = new PrototypeOptions();
-var billing = new BillingOptions();
 var context = new WorkspaceContext(store, clock, options);
 var auth = new AuthService(context, new LocalPasswordService());
-var reservations = new ReservationService(context, billing, options);
+var reservations = new ReservationService(context, options);
 var administration = new AdministrationService(context, reservations);
-var operations = new OperationsService(context, administration, reservations, options, billing, new DemoDirectoryAdapter(), new LocalPaymentAdapter(), new LocalEmailSink());
+var operations = new OperationsService(context, administration, reservations, options, new DemoDirectoryAdapter(), new LocalEmailSink());
 await auth.BootstrapAsync("Owner", "owner@example.test", "long demonstration password", default);
 var owner = (await auth.LoginAsync(new("owner@example.test", "long demonstration password"), default)).User;
 await auth.BootstrapAsync("Changed", "OWNER@example.test", "another password value", default);
@@ -181,16 +179,16 @@ await administration.CancelClosureAsync(owner.MemberId, closureId, default);
 Check(store.Query<Reservation>().Any(x => x.CancellationReason == CancellationReason.RoomClosed), "removing closure does not restore reservations");
 try { reservations.History(employee.User.MemberId, true, true, 1, 20); throw new InvalidOperationException(); }
 catch (BusinessException e) { Check(e.Status == 403, "employee cannot read organization history"); }
-billing.Enabled = true;
-await Reject(() => reservations.CreateBatchAsync(colleague.User.MemberId, new(otherDesk, [today.AddDays(3)], true, null, null), default), 409, "booking_conflict");
-var failed = await operations.PayAsync(owner.MemberId, new("failure", false), default);
-Check(failed.Status == "Failed" && operations.Billing(owner.MemberId).Status == "PendingPayment", "failed simulator payment does not activate");
-var paid = await operations.PayAsync(owner.MemberId, new("success", true), default);
-var repeat = await operations.PayAsync(owner.MemberId, new("success", false), default);
-Check(paid.Id == repeat.Id && store.Query<Payment>().Count() == 2, "payment idempotency protects period");
-Check(operations.Billing(owner.MemberId).Status == "Active", "success simulator payment activates paid period");
-var entitled = await reservations.AvailabilityAsync(colleague.User.MemberId, new(otherDesk, [today.AddDays(3)], true, null, null), default);
-Check(entitled.Single().Available, "active payment permits a future booking interval");
+var unrestricted = await reservations.AvailabilityAsync(colleague.User.MemberId, new(otherDesk, [today.AddDays(3)], true, null, null), default);
+Check(unrestricted.Single().Available, "booking availability needs no subscription or payment");
+var unpaidBooking = await reservations.CreateBatchAsync(colleague.User.MemberId, new(otherDesk, [today.AddDays(3)], true, null, null), default);
+Check(unpaidBooking.Reservations.Count == 1 && !store.Query<OrganizationSubscription>().Any() && !store.Query<Payment>().Any(), "booking succeeds without creating subscriptions or payments");
+var legacySubscription = new OrganizationSubscription { OrganizationId = options.OrganizationId, Currency = "CZK", Status = SubscriptionStatus.Active, CurrentPeriodStartsAtUtc = clock.Current.AddDays(-2), CurrentPeriodEndsAtUtc = clock.Current.AddDays(-1) };
+store.Add(legacySubscription);
+var outsideLegacyPeriod = await reservations.CreateBatchAsync(colleague.User.MemberId, new(otherDesk, [today.AddDays(6)], true, null, null), default);
+Check(outsideLegacyPeriod.Reservations.Count == 1, "legacy expired paid period cannot block bookings");
+await operations.TickAsync(default);
+Check(store.Query<OrganizationSubscription>().Single().Status == SubscriptionStatus.Active, "worker leaves legacy subscription data untouched");
 await operations.SetDirectoryAsync(owner.MemberId, colleague.User.MemberId, "Unavailable", default);
 await operations.SyncDirectoryAsync(owner.MemberId, true, default);
 Check(auth.ValidateSession(colleague.Session.Id) != null, "Unavailable directory leaves account active");
@@ -229,7 +227,7 @@ Check(store.Query<ReservationEvent>().Count() == eventCount, "worker replay does
 Check(auth.ValidateSession(employee.Session.Id) == null, "session expiry remains fixed at eight hours");
 var failedNotice = new EmailNotification { OrganizationId = options.OrganizationId, MemberId = owner.MemberId, Kind = NotificationKind.ReservationCreated, RecipientEmail = owner.Email, DeduplicationKey = "retry-fixture", Subject = "Fixture", Body = "Test only", ScheduledAtUtc = clock.Current };
 store.Add(failedNotice);
-var failingOperations = new OperationsService(context, administration, reservations, options, billing, new DemoDirectoryAdapter(), new LocalPaymentAdapter(), new FailingEmailSink());
+var failingOperations = new OperationsService(context, administration, reservations, options, new DemoDirectoryAdapter(), new FailingEmailSink());
 for (var attempt = 0; attempt < 5; attempt++) { await failingOperations.TickAsync(default); clock.Current = clock.Current.AddHours(1); }
 Check(store.Query<EmailNotification>().Single(x => x.Id == failedNotice.Id).Status == NotificationStatus.Failed, "outbox failures retry then reach terminal diagnostic state");
 var crashed = new EmailNotification { OrganizationId = options.OrganizationId, MemberId = owner.MemberId, Kind = NotificationKind.ReservationCreated, RecipientEmail = owner.Email, DeduplicationKey = "crash-fixture", Subject = "Fixture", Body = "Test only", ScheduledAtUtc = clock.Current, Status = NotificationStatus.Processing, LockedUntilUtc = clock.Current.AddMinutes(-1), AttemptCount = 5 };

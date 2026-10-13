@@ -26,9 +26,6 @@ public sealed record MemberView(Guid Id, string Name, string Email, string Role,
 public sealed record DirectoryRequest(string? State);
 public sealed record DirectoryRunView(DateTimeOffset? LastRun, string Result);
 public sealed record NotificationView(Guid Id, string Recipient, string Subject, string Body, string Status, DateTimeOffset ScheduledAt, DateTimeOffset? SentAt, int Attempts, string? Error);
-public sealed record BillingView(bool Enabled, string Adapter, decimal DemoPrice, string Currency, string Status, DateTimeOffset? PeriodStart, DateTimeOffset? PeriodEnd);
-public sealed record PaymentRequest(string IdempotencyKey, bool Succeed);
-public sealed record PaymentView(Guid Id, string Status, decimal Amount, string Currency, DateTimeOffset Start, DateTimeOffset End, bool IsTest);
 public sealed record BookingBatchResult(Guid BatchId, List<ReservationView> Reservations);
 public sealed record ApiProblem(string Title, int Status, string Code, object? Details = null, Dictionary<string, string[]>? Errors = null)
 {

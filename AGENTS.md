@@ -6,7 +6,7 @@
 - Run `pwsh -NoProfile -File scripts/Check-TextFormat.ps1` before completing changes. The same command can run in CI.
 - Prefer codebase-memory-mcp tools for code discovery; index this repository before discovery when necessary.
 
-- The user runs database migrations themselves. Do not generate or apply migrations, or create a database, unless explicitly asked to execute that specific step. Preparing entities, mappings and connection configuration is allowed within the requested task.
+- At the user's request, normal backend startup applies existing EF Core migrations before ABC initialisation and workers. Do not generate migrations, edit existing migrations/snapshots, or execute migrations/create a database during agent verification unless the user explicitly asks to execute that step. The --verify-host mode skips startup migrations and initialisation.
 
 - Use SQL Server with the default dbo schema. Use one DeskoviaDbContext and SQL Server migrations in Migrations. The user removed PostgreSQL and its migrations for a fresh database; do not restore them.
 

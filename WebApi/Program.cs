@@ -4,7 +4,6 @@ using Deskovia.Application.Interfaces;
 using Deskovia.Application.Services;
 using Deskovia.Infrastructure.Identity;
 using Deskovia.Infrastructure.Notifications;
-using Deskovia.Infrastructure.Payments;
 using Deskovia.Infrastructure.Persistence;
 using Deskovia.WebApi.Security;
 using Deskovia.WebApi.Workers;
@@ -20,9 +19,6 @@ CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-GB");
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = SqlServerDatabase.ConnectionString(builder.Configuration);
 var prototype = builder.Configuration.GetSection("Prototype").Get<PrototypeOptions>() ?? new();
-var billing = builder.Configuration.GetSection("Billing").Get<BillingOptions>() ?? new();
-if (billing.DemoMonthlyPrice < 0 || billing.DemoMonthlyPrice > 9999999999.99m || decimal.Round(billing.DemoMonthlyPrice, 2) != billing.DemoMonthlyPrice || billing.Currency.Length != 3 || !billing.Currency.All(c => c is >= 'A' and <= 'Z'))
-    throw new InvalidOperationException("Billing requires a nonnegative demo price and uppercase currency.");
 if (!Uri.TryCreate(prototype.FrontendOrigin, UriKind.Absolute, out var frontend) || frontend.Scheme != "https" || frontend.GetLeftPart(UriPartial.Authority) != prototype.FrontendOrigin)
     throw new InvalidOperationException("Prototype:FrontendOrigin must be an exact HTTPS origin.");
 var entra = builder.Configuration.GetSection("Entra").Get<EntraOptions>() ?? new();
@@ -30,7 +26,6 @@ entra.FrontendOrigin = prototype.FrontendOrigin;
 builder.Services.AddSingleton(entra);
 builder.Services.AddScoped<EntraEvents>();
 builder.Services.AddSingleton(prototype);
-builder.Services.AddSingleton(billing);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddDbContext<DeskoviaDbContext>(o => SqlServerDatabase.Configure(o, connectionString));
 builder.Services.AddScoped<IWorkspaceStore, WorkspaceStore>();
@@ -42,7 +37,6 @@ builder.Services.AddScoped<AdministrationService>();
 builder.Services.AddScoped<OperationsService>();
 builder.Services.AddSingleton<IPasswordService, LocalPasswordService>();
 builder.Services.AddSingleton<IDirectoryAdapter, DemoDirectoryAdapter>();
-builder.Services.AddSingleton<IPaymentAdapter, LocalPaymentAdapter>();
 builder.Services.AddSingleton<IEmailSink, LocalEmailSink>();
 builder.Services.AddScoped<SessionCookieEvents>();
 var authentication = builder.Services.AddAuthentication("Cookies").AddCookie("Cookies", o =>

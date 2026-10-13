@@ -27,12 +27,6 @@ public sealed class PrototypeOptions
     public string FrontendOrigin { get; set; } = "https://localhost:7178";
     public bool DemoDirectoryEnabled { get; set; } = true;
 }
-public sealed class BillingOptions
-{
-    public bool Enabled { get; set; }
-    public decimal DemoMonthlyPrice { get; set; } = 499;
-    public string Currency { get; set; } = "CZK";
-}
 public sealed class WorkspaceContext(IWorkspaceStore store, TimeProvider clock, PrototypeOptions options)
 {
     public IWorkspaceStore Store { get; } = store;

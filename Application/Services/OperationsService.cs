@@ -6,7 +6,7 @@ using Deskovia.Shared.Contracts;
 namespace Deskovia.Application.Services;
 
 public sealed class OperationsService(WorkspaceContext context, AdministrationService administration, ReservationService reservations,
-    PrototypeOptions options, BillingOptions billing, IDirectoryAdapter directory, IPaymentAdapter paymentAdapter, IEmailSink email)
+    PrototypeOptions options, IDirectoryAdapter directory, IEmailSink email)
 {
     private IWorkspaceStore Store => context.Store;
     public DirectoryRunView DirectoryStatus(Guid actor)
@@ -68,54 +68,11 @@ public sealed class OperationsService(WorkspaceContext context, AdministrationSe
         return Store.Query<EmailNotification>().Where(x => x.OrganizationId == context.OrganizationId).OrderByDescending(x => x.ScheduledAtUtc).Take(200).ToList()
             .Select(x => new NotificationView(x.Id, x.RecipientEmail, x.Subject, x.Body, x.Status.ToString(), x.ScheduledAtUtc, x.SentAtUtc, x.AttemptCount, x.LastError)).ToList();
     }
-    public BillingView Billing(Guid actor)
-    {
-        context.Require(actor, MemberRole.Owner);
-        var s = Store.Query<OrganizationSubscription>().SingleOrDefault(x => x.OrganizationId == context.OrganizationId);
-        var state = s?.Status.ToString() ?? "PendingPayment";
-        if (s?.Status == SubscriptionStatus.Active && s.CurrentPeriodEndsAtUtc <= context.Now) state = "Expired";
-        return new(billing.Enabled, paymentAdapter.Name, billing.DemoMonthlyPrice, billing.Currency, state, s?.CurrentPeriodStartsAtUtc, s?.CurrentPeriodEndsAtUtc);
-    }
-    public async Task<PaymentView> PayAsync(Guid actor, PaymentRequest input, CancellationToken ct)
-    {
-        var key = WorkspaceContext.Text(input.IdempotencyKey, 100);
-        var success = paymentAdapter.Simulate(input.Succeed);
-        await using var tx = await Store.LockAsync(ct);
-        context.Require(actor, MemberRole.Owner);
-        key = context.OrganizationId + ":" + key;
-        var existing = Store.Query<Payment>().SingleOrDefault(x => x.IdempotencyKey == key);
-        if (existing != null) { await Store.CommitAsync(ct); return View(existing); }
-        var s = Store.Query<OrganizationSubscription>().SingleOrDefault(x => x.OrganizationId == context.OrganizationId);
-        if (s == null)
-        {
-            s = new OrganizationSubscription { OrganizationId = context.OrganizationId, Currency = billing.Currency, MonthlyPrice = billing.DemoMonthlyPrice, CreatedAtUtc = context.Now };
-            Store.Add(s);
-        }
-        var from = s.CurrentPeriodEndsAtUtc > context.Now ? s.CurrentPeriodEndsAtUtc.Value : context.Now;
-        var p = new Payment { OrganizationId = context.OrganizationId, SubscriptionId = s.Id, Amount = billing.DemoMonthlyPrice, Currency = billing.Currency,
-            Provider = paymentAdapter.Name, IdempotencyKey = key, IsTest = true, CreatedAtUtc = context.Now,
-            PeriodStartsAtUtc = from, PeriodEndsAtUtc = from.AddMonths(1), Status = success ? PaymentStatus.Succeeded : PaymentStatus.Failed, PaidAtUtc = success ? context.Now : null };
-        Store.Add(p);
-        // Local simulator event; this is not a provider webhook or signature verification.
-        Store.Add(new PaymentWebhookEvent { OrganizationId = context.OrganizationId, PaymentId = p.Id, Provider = paymentAdapter.Name,
-            ProviderEventId = p.Id.ToString(), Status = WebhookStatus.Processed, ReceivedAtUtc = context.Now, ProcessedAtUtc = context.Now });
-        if (success)
-        {
-            s.Status = SubscriptionStatus.Active;
-            if (s.CurrentPeriodEndsAtUtc == null || s.CurrentPeriodEndsAtUtc <= context.Now) s.CurrentPeriodStartsAtUtc = from;
-            s.CurrentPeriodEndsAtUtc = p.PeriodEndsAtUtc;
-        }
-        context.Audit(actor, "LocalSimulatedPayment", "Payment", p.Id, p.Status.ToString());
-        await Store.CommitAsync(ct); return View(p);
-    }
-    private static PaymentView View(Payment p) => new(p.Id, p.Status.ToString(), p.Amount, p.Currency, p.PeriodStartsAtUtc, p.PeriodEndsAtUtc, p.IsTest);
     public async Task TickAsync(CancellationToken ct)
     {
         await using (var tx = await Store.LockAsync(ct))
         {
             reservations.ExpireDue();
-            foreach (var s in Store.Query<OrganizationSubscription>().Where(x => x.OrganizationId == context.OrganizationId && x.Status == SubscriptionStatus.Active && x.CurrentPeriodEndsAtUtc <= context.Now).ToList())
-                s.Status = SubscriptionStatus.Expired;
             await Store.CommitAsync(ct);
         }
         await SyncDirectoryAsync(null, false, ct);

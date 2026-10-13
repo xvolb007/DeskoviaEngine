@@ -100,6 +100,4 @@ public sealed class OwnerController(AdministrationService admin, OperationsServi
     [HttpGet("demo-directory")] public DirectoryRunView DirectoryStatus() => operations.DirectoryStatus(Actor);
     [HttpPost("demo-directory/sync")] public async Task<IActionResult> Sync(CancellationToken ct) { await operations.SyncDirectoryAsync(Actor, true, ct); return NoContent(); }
     [HttpGet("notifications")] public List<NotificationView> Notifications() => operations.Notifications(Actor);
-    [HttpGet("billing")] public BillingView Billing() => operations.Billing(Actor);
-    [HttpPost("billing/simulate")] public Task<PaymentView> Pay(PaymentRequest input, CancellationToken ct) => operations.PayAsync(Actor, input, ct);
 }

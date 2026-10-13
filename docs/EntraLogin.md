@@ -38,6 +38,6 @@ The authorization-code callback uses query response mode and the existing SameSi
 
 The file-based runner checks identity creation, roles, mutable/missing email, email collisions, expired/revoked sessions, disabled members, concurrency and archived ABC without a database. Verify-Host.ps1 checks HTTP security without touching the database. Verify-EntraHost.ps1 additionally checks the real Microsoft challenge, state/cancellation failures and absence of premature sessions; it requires a configured secret and network access to public Microsoft metadata. Run this script before exhausting credential rate limits. A real successful Microsoft sign-in and SQL persistence require your local running database and interactive university authentication; do not treat host-only checks as successful tenant authentication.
 
-Microsoft Graph daily employee checks, SMTP and a real payment sandbox remain separate integrations. The existing demo directory and payment simulator are still explicitly labelled and do not represent these external services.
+Microsoft Graph daily employee checks and SMTP remain separate integrations. The existing directory simulation is explicitly labelled. Application payment functionality is removed; no subscription or payment is required.
 
 References: [ASP.NET Core OIDC configuration](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/configure-oidc-web-authentication?view=aspnetcore-10.0), [Microsoft identity claims](https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference).

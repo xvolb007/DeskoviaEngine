@@ -17,7 +17,6 @@
     <Folder Include="Identity\" />
     <Folder Include="Persistence\" />
     <Folder Include="Notifications\" />
-    <Folder Include="Payments\" />
   </ItemGroup>
 
   <ItemGroup>

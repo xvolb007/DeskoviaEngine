@@ -11,10 +11,14 @@ Assert ($null -ne $settings.microsoftEnabled -and $null -ne $settings.microsoftC
 $t = Invoke-RestMethod "$ApiUrl/api/auth/antiforgery" -WebSession $s
 $cookie = $s.Cookies.GetCookies([uri]$ApiUrl) | Where-Object Name -eq '__Host-Deskovia.Antiforgery'
 Assert ($cookie.HttpOnly -and $cookie.Secure) 'anonymous CSRF bootstrap uses Secure/HttpOnly cookie'
-foreach ($path in @('api/auth/me','api/offices','api/admin/members','api/owner/billing')) {
+foreach ($path in @('api/auth/me','api/offices','api/admin/members','api/owner/notifications')) {
     $r = Invoke-WebRequest "$ApiUrl/$path" -SkipHttpErrorCheck
     Assert ($r.StatusCode -eq 401 -and -not $r.Headers.ContainsKey('Location')) "$path returns 401 without redirect"
 }
+$r = Invoke-WebRequest "$ApiUrl/api/owner/billing" -SkipHttpErrorCheck
+Assert ($r.StatusCode -eq 404) 'billing endpoint removed'
+$r = Invoke-WebRequest "$ApiUrl/api/owner/billing/simulate" -Method Post -ContentType application/json -Body '{"idempotencyKey":"removed","succeed":true}' -WebSession $s -Headers @{'X-CSRF-TOKEN'=$t.token} -SkipHttpErrorCheck
+Assert ($r.StatusCode -eq 404) 'payment simulation endpoint removed'
 $r = Invoke-WebRequest "$ApiUrl/api/auth/login" -Method Post -ContentType application/json -Body '{"email":"check@example.test","password":"long enough password"}' -SkipHttpErrorCheck
 Assert ($r.StatusCode -eq 400 -and (Parse $r).code -eq 'antiforgery_failed') 'login requires CSRF token'
 $r = Invoke-WebRequest "$ApiUrl/api/auth/login" -Method Post -ContentType application/json -Body '{}' -WebSession $s -Headers @{'X-CSRF-TOKEN'=$t.token} -SkipHttpErrorCheck
@@ -28,7 +32,7 @@ Assert ($r.Headers['Access-Control-Allow-Origin'] -eq $FrontendUrl -and $r.Heade
 $r = Invoke-WebRequest "$ApiUrl/api/auth/antiforgery" -Headers @{Origin='https://example.invalid'}
 Assert (-not $r.Headers.ContainsKey('Access-Control-Allow-Origin')) 'unrelated origin denied'
 $o = Invoke-RestMethod "$ApiUrl/openapi/v1.json"
-Assert (@($o.paths.PSObject.Properties).Count -ge 38) 'live OpenAPI routes'
+Assert (@($o.paths.PSObject.Properties).Count -ge 36) 'live OpenAPI routes'
 for ($i=0; $i -lt 12; $i++) {
     $r = Invoke-WebRequest "$ApiUrl/api/auth/login" -Method Post -ContentType application/json -Body '{}' -WebSession $s -Headers @{'X-CSRF-TOKEN'=$t.token} -SkipHttpErrorCheck
 }
